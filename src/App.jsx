@@ -41,6 +41,7 @@ export default function App() {
                     initial={{ y: 50, opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
                     transition={{ delay: 1, duration: 1, ease: 'easeOut' }}
+                    onClick={() => window.location.href = 'https://games.parapsychlab.io'}
                 >
                     Enter the Lab
                 </motion.button>
@@ -49,7 +50,6 @@ export default function App() {
             {/* Floating Orbs/Particles Example */}
             <div className="pointer-events-none absolute inset-0 z-0">
                 {[...Array(15)].map((_, i) => {
-                    // generate random positions & durations
                     const randomX = Math.random() * 100
                     const randomY = Math.random() * 100
                     const randomSize = Math.random() * 40 + 10
