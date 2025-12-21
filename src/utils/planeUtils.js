@@ -7,12 +7,6 @@ import axios from 'axios';
 
 const OPENSKY_URL = 'https://opensky-network.org/api/states/all';
 
-// Mock planes for testing if API fails or rate limited
-const MOCK_PLANES = [
-    [ "e8027e", "LPE2450 ", "Peru", 1697042065, 1697042066, -75.0, -12.0, 3000, false, 200, 180, 0, null, 3100, null, false, 0],
-    // ... add random ones if needed
-];
-
 export const fetchPlanes = async (minLat, minLon, maxLat, maxLon) => {
     try {
         // Construct URL with bounding box
@@ -30,7 +24,6 @@ export const fetchPlanes = async (minLat, minLon, maxLat, maxLon) => {
 
         // To properly implement this, a backend proxy is usually required.
         // For this demo, we might rely on a fallback or assume a proxy is handled (which it isn't here).
-        // I'll simulate some planes near the observer for the demo if the call fails.
 
         const response = await axios.get(OPENSKY_URL, {
             params: {
@@ -45,36 +38,10 @@ export const fetchPlanes = async (minLat, minLon, maxLat, maxLon) => {
         return response.data.states || [];
 
     } catch (error) {
-        console.warn("OpenSky API fetch failed (likely CORS or Rate Limit), using mock data.");
-        // Return some simulated planes around the center point for visualization
-        return generateMockPlanes(minLat, minLon, maxLat, maxLon);
+        console.warn("OpenSky API fetch failed (likely CORS or Rate Limit).");
+        return [];
     }
 };
-
-function generateMockPlanes(minLat, minLon, maxLat, maxLon) {
-    const planes = [];
-    const count = 5;
-    for (let i=0; i<count; i++) {
-        const lat = minLat + Math.random() * (maxLat - minLat);
-        const lon = minLon + Math.random() * (maxLon - minLon);
-        const alt = 8000 + Math.random() * 4000; // meters
-        const heading = Math.random() * 360;
-
-        // OpenSky state vector format index 5: lon, 6: lat, 7: baro_altitude, 10: heading
-        // We simulate the array structure
-        const state = [];
-        state[0] = `mock${i}`; // icao24
-        state[1] = `FLIGHT${i}`; // callsign
-        state[2] = "MockCountry"; // origin_country
-        state[5] = lon;
-        state[6] = lat;
-        state[7] = alt; // meters
-        state[10] = heading; // degrees
-
-        planes.push(state);
-    }
-    return planes;
-}
 
 // Convert Lat/Lon/Alt to Local Sky Coordinates (Az/El/Range) relative to Observer
 export const getPlanePositionRelative = (planeState, observerLat, observerLon, observerAlt = 0) => {
