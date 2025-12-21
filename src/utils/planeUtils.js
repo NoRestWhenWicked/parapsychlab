@@ -71,6 +71,8 @@ export const getPlanePositionRelative = (planeState, observerLat, observerLon, o
     const surfaceDist = R * c; // meters
 
     // Calculate Azimuth (Bearing)
+    // 0 is North, increasing clockwise (90 East, 180 South, 270 West).
+    // Verified to map correctly to 3D scene where -Z is North.
     const y = Math.sin(dLon) * Math.cos(lat2);
     const x = Math.cos(lat1) * Math.sin(lat2) -
               Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
