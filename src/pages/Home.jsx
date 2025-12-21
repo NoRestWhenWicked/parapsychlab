@@ -1,8 +1,20 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { Link } from 'react-router-dom'
 
 export default function Home() {
+    // Generate stars for the background overlay
+    const stars = useMemo(() => {
+        return [...Array(100)].map((_, i) => ({
+            id: i,
+            x: Math.random() * 100,
+            y: Math.random() * 100,
+            size: Math.random() * 2 + 1,
+            delay: Math.random() * 5,
+            duration: Math.random() * 3 + 2
+        }))
+    }, [])
+
     return (
         <div className="relative min-h-screen font-sans overflow-hidden bg-black text-white">
             {/* Animated fractal/particle backdrop */}
@@ -13,7 +25,29 @@ export default function Home() {
                 transition={{ duration: 3 }}
             >
                 <div className="w-full h-full bg-gradient-to-b from-purple-900 via-black to-black opacity-90" />
-                {/* Could add a subtle fractal swirl or starry field overlay here if desired */}
+
+                {/* Starry Field Overlay */}
+                <div className="absolute inset-0 w-full h-full">
+                    {stars.map((star) => (
+                        <motion.div
+                            key={star.id}
+                            className="absolute bg-white rounded-full opacity-70"
+                            style={{
+                                left: `${star.x}%`,
+                                top: `${star.y}%`,
+                                width: `${star.size}px`,
+                                height: `${star.size}px`,
+                            }}
+                            animate={{ opacity: [0.2, 0.8, 0.2] }}
+                            transition={{
+                                duration: star.duration,
+                                repeat: Infinity,
+                                ease: "easeInOut",
+                                delay: star.delay
+                            }}
+                        />
+                    ))}
+                </div>
             </motion.div>
 
             {/* Hero Section */}
