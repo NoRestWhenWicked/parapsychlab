@@ -35,8 +35,6 @@ function Satellites({ observerLat, observerLon }) {
             if (relativePos.elevation < 0) return null; // Below horizon
 
             const distance = 80; // Render further out
-            // Adjust azimuth mapping if needed to match Three.js coordinate system
-            // We assume standard mapping for now.
             const pos = polarToCartesian(relativePos.azimuth, relativePos.elevation, distance);
 
             return {
