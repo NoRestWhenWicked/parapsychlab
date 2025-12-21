@@ -1,0 +1,6 @@
+
+> parapsychlab@0.0.1 start
+> node server.js
+
+Proxy server running on http://localhost:3001
+Fetching planes from OpenSky with params: {"lamin":"38.7128","lomin":"-76.006","lamax":"42.7128","lomax":"-72.006"}
