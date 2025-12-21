@@ -75,12 +75,11 @@ export const getPlanePositionRelative = (planeState, observerLat, observerLon, o
     const x = Math.cos(lat1) * Math.sin(lat2) -
               Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
     let az = Math.atan2(y, x); // radians
-    // normalize to 0-2PI? (atan2 is -PI to PI)
-    // We can keep it as is, or normalize.
-    // Usually Azimuth is 0 at North, clockwise.
-    // Standard atan2 (x,y) -> 0 is +X (East).
-    // Here we used standard bearing formula, where 0 is North if mapped correctly.
-    // Let's verify mapping later.
+
+    // Normalize to 0-2PI
+    if (az < 0) {
+        az += 2 * Math.PI;
+    }
 
     // Elevation
     // Height difference
