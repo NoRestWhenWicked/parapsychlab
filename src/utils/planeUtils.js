@@ -2,10 +2,10 @@ import axios from 'axios';
 
 // OpenSky Network API
 // Public API limitations: Anonymous users: 400 credits per day.
-// GET /api/states/all
+// GET /api/planes (proxied to https://opensky-network.org/api/states/all)
 // Parameters: lamin, lomin, lamax, lomax (bounding box)
 
-const OPENSKY_URL = 'https://opensky-network.org/api/states/all';
+const OPENSKY_URL = '/api/planes';
 
 export const fetchPlanes = async (minLat, minLon, maxLat, maxLon) => {
     try {
@@ -15,15 +15,8 @@ export const fetchPlanes = async (minLat, minLon, maxLat, maxLon) => {
         // Use a wider search or just fetch all (expensive/slow)
         // For 'sky view' we usually want planes within visible range (~300km radius?)
 
-        // Because OpenSky is strict with CORS and rate limits, this often fails in browser without a proxy.
-        // We will try to fetch, if it fails, we return mock data or empty.
-
-        // Note: OpenSky blocks CORS often.
-        // If this runs in a browser environment directly, it will likely fail CORS check unless configured.
-        // We'll add a try/catch and fallback.
-
-        // To properly implement this, a backend proxy is usually required.
-        // For this demo, we might rely on a fallback or assume a proxy is handled (which it isn't here).
+        // OpenSky is strict with CORS and rate limits, so we use a backend proxy.
+        // If it fails, we return empty.
 
         const response = await axios.get(OPENSKY_URL, {
             params: {
@@ -38,7 +31,7 @@ export const fetchPlanes = async (minLat, minLon, maxLat, maxLon) => {
         return response.data.states || [];
 
     } catch (error) {
-        console.warn("OpenSky API fetch failed (likely CORS or Rate Limit).");
+        console.warn("OpenSky API fetch failed (likely CORS or Rate Limit or Proxy Error).");
         return [];
     }
 };
