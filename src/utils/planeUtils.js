@@ -2,10 +2,10 @@ import axios from 'axios';
 
 // OpenSky Network API
 // Public API limitations: Anonymous users: 400 credits per day.
-// GET /api/states/all
+// GET /api/planes (proxied to https://opensky-network.org/api/states/all)
 // Parameters: lamin, lomin, lamax, lomax (bounding box)
 
-const OPENSKY_URL = 'https://opensky-network.org/api/states/all';
+const OPENSKY_URL = '/api/planes';
 
 export const fetchPlanes = async (minLat, minLon, maxLat, maxLon) => {
     try {
@@ -15,15 +15,8 @@ export const fetchPlanes = async (minLat, minLon, maxLat, maxLon) => {
         // Use a wider search or just fetch all (expensive/slow)
         // For 'sky view' we usually want planes within visible range (~300km radius?)
 
-        // Because OpenSky is strict with CORS and rate limits, this often fails in browser without a proxy.
-        // We will try to fetch, if it fails, we return mock data or empty.
-
-        // Note: OpenSky blocks CORS often.
-        // If this runs in a browser environment directly, it will likely fail CORS check unless configured.
-        // We'll add a try/catch and fallback.
-
-        // To properly implement this, a backend proxy is usually required.
-        // For this demo, we might rely on a fallback or assume a proxy is handled (which it isn't here).
+        // OpenSky is strict with CORS and rate limits, so we use a backend proxy.
+        // If it fails, we return empty.
 
         const response = await axios.get(OPENSKY_URL, {
             params: {
@@ -38,7 +31,7 @@ export const fetchPlanes = async (minLat, minLon, maxLat, maxLon) => {
         return response.data.states || [];
 
     } catch (error) {
-        console.warn("OpenSky API fetch failed (likely CORS or Rate Limit).");
+        console.warn("OpenSky API fetch failed (likely CORS or Rate Limit or Proxy Error).");
         return [];
     }
 };
@@ -71,25 +64,42 @@ export const getPlanePositionRelative = (planeState, observerLat, observerLon, o
     const surfaceDist = R * c; // meters
 
     // Calculate Azimuth (Bearing)
+    // 0 is North, increasing clockwise (90 East, 180 South, 270 West).
+    // Verified to map correctly to 3D scene where -Z is North.
     const y = Math.sin(dLon) * Math.cos(lat2);
     const x = Math.cos(lat1) * Math.sin(lat2) -
               Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
     let az = Math.atan2(y, x); // radians
-    // normalize to 0-2PI? (atan2 is -PI to PI)
-    // We can keep it as is, or normalize.
-    // Usually Azimuth is 0 at North, clockwise.
-    // Standard atan2 (x,y) -> 0 is +X (East).
-    // Here we used standard bearing formula, where 0 is North if mapped correctly.
-    // Let's verify mapping later.
+
+    // Normalize to 0-2PI
+    if (az < 0) {
+        az += 2 * Math.PI;
+    }
 
     // Elevation
     // Height difference
-    const altDiff = pAlt - observerAlt; // meters
-    // Simple flat triangle approximation for elevation is okay for short ranges and visual only
+    // const altDiff = pAlt - observerAlt; // meters
+
     // Correct way: Earth curvature taking into account.
-    // For AR app, visible planes are close enough.
-    const el = Math.atan2(altDiff - (surfaceDist*surfaceDist)/(2*R), surfaceDist);
-    // (Approximation subtracting drop due to curvature)
+    const r_o = R + observerAlt;
+    const r_t = R + pAlt;
+
+    // Central angle in radians
+    const theta = surfaceDist / R;
+
+    // Slant range
+    const s = Math.sqrt(r_o*r_o + r_t*r_t - 2*r_o*r_t*Math.cos(theta));
+
+    let el;
+    if (s === 0) {
+        el = 0; // Observer and target are coincident
+    } else {
+        // sin(El) = (r_t * cos(theta) - r_o) / s
+        // Derived from Law of Cosines on the Earth-Center/Observer/Target triangle
+        const sinEl = (r_t * Math.cos(theta) - r_o) / s;
+        // Clamp to valid range to avoid NaN from floating point errors
+        el = Math.asin(Math.max(-1, Math.min(1, sinEl)));
+    }
 
     return {
         azimuth: az,

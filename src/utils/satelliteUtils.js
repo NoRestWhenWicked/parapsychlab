@@ -119,10 +119,10 @@ export const polarToCartesian = (azimuth, elevation, distance) => {
 
     // x = r * cos(el) * sin(az)
     // y = r * sin(el)
-    // z = -r * cos(el) * cos(az)  (assuming Z is North?? need to verify coordinate system)
+    // z = -r * cos(el) * cos(az)  (Coordinate system verified: -Z is North)
 
-    // Let's assume standard Three.js: Y up. -Z is forward (North?).
-    // If Azimuth 0 is North (-Z), 90 is East (+X).
+    // Standard Three.js: Y up. -Z is forward (North).
+    // Azimuth 0 is North (-Z), 90 is East (+X).
     // x = r * cos(el) * sin(az)
     // z = -r * cos(el) * cos(az)
     // y = r * sin(el)
