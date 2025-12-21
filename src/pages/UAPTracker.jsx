@@ -155,9 +155,9 @@ function Planes({ observerLat, observerLon }) {
                         <coneGeometry args={[0.2, 0.6, 8]} />
                         <meshBasicMaterial color="#00ffff" />
                     </mesh>
-                    {/* <Html distanceFactor={15}>
+                    <Html distanceFactor={15}>
                         <div className="text-xs text-cyan-400 whitespace-nowrap">{plane.callsign}</div>
-                    </Html> */}
+                    </Html>
                 </group>
             ))}
         </group>
