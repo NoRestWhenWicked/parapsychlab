@@ -98,7 +98,8 @@ function Planes({ observerLat, observerLon }) {
             return {
                 id: plane[0], // icao24
                 callsign: relativePos.callsign || plane[0],
-                position: pos
+                position: pos,
+                heading: plane[10] || 0
             };
         }).filter(p => p !== null);
 
@@ -108,14 +109,16 @@ function Planes({ observerLat, observerLon }) {
     return (
         <group>
             {planePositions.map((plane, idx) => (
-                <mesh key={idx} position={plane.position}>
-                    {/* Plane represented as a cone or pyramid pointing up/forward? Just a box for now */}
-                    <boxGeometry args={[0.5, 0.5, 0.5]} />
-                    <meshBasicMaterial color="#00ffff" />
+                <group key={idx} position={plane.position} rotation={[0, -plane.heading * (Math.PI / 180), 0]}>
+                    <mesh rotation={[-Math.PI / 2, 0, 0]}>
+                        {/* Plane represented as a cone pointing forward */}
+                        <coneGeometry args={[0.2, 0.6, 8]} />
+                        <meshBasicMaterial color="#00ffff" />
+                    </mesh>
                     {/* <Html distanceFactor={15}>
                         <div className="text-xs text-cyan-400 whitespace-nowrap">{plane.callsign}</div>
                     </Html> */}
-                </mesh>
+                </group>
             ))}
         </group>
     )
