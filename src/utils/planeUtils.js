@@ -82,18 +82,21 @@ export const getPlanePositionRelative = (planeState, observerLat, observerLon, o
     }
 
     // Elevation
-    // Height difference
-    const altDiff = pAlt - observerAlt; // meters
-    // Simple flat triangle approximation for elevation is okay for short ranges and visual only
     // Correct way: Earth curvature taking into account.
-    // For AR app, visible planes are close enough.
-    const el = Math.atan2(altDiff - (surfaceDist*surfaceDist)/(2*R), surfaceDist);
-    // (Approximation subtracting drop due to curvature)
+    const r_obs = R + observerAlt;
+    const r_plane = R + (pAlt || 0); // Handle null alt
+
+    // Slant range (S)
+    // S^2 = (r_plane - r_obs)^2 + 4 * r_obs * r_plane * sin^2(c/2)
+    const distSq = Math.pow(r_plane - r_obs, 2) + 4 * r_obs * r_plane * Math.pow(Math.sin(c/2), 2);
+    const slantDist = Math.sqrt(distSq);
+
+    const el = Math.atan2(r_plane * Math.cos(c) - r_obs, r_plane * Math.sin(c));
 
     return {
         azimuth: az,
         elevation: el,
-        range: surfaceDist/1000, // km
+        range: slantDist/1000, // km
         callsign: planeState[1]?.trim()
     };
 }
