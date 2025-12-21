@@ -107,7 +107,8 @@ function Planes({ observerLat, observerLon }) {
 
             // Calculate elapsed time since the data was recorded
             // If timePos is missing, we can't interpolate, so use 0.
-            const elapsedSeconds = timePos ? (now - timePos) : 0;
+            // We clamp elapsedSeconds to be >= 0 to handle potential clock skew where local time might be slightly behind server time.
+            const elapsedSeconds = timePos ? Math.max(0, now - timePos) : 0;
 
             // Extrapolate position
             const R = 6371000; // Earth radius in meters
