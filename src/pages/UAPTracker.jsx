@@ -1,15 +1,111 @@
-import React, { Suspense, useEffect, useState, useRef } from 'react'
-import { Canvas, useFrame } from '@react-three/fiber'
-import { Stars, OrbitControls, Text, Html } from '@react-three/drei'
+import React, { Suspense, useEffect, useState, useRef, useMemo } from 'react'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
+import { OrbitControls, DeviceOrientationControls, Html, Sphere, Text } from '@react-three/drei'
 import * as THREE from 'three'
 import { fetchTLEs, getSatPositionRelative, polarToCartesian } from '../utils/satelliteUtils'
 import { fetchPlanes, getPlanePositionRelative } from '../utils/planeUtils'
+import starCatalog from '../utils/starCatalog.json'
+import { gstime } from 'satellite.js'
 
 function Loading() {
     return (
         <div className="absolute top-0 left-0 w-full h-full flex items-center justify-center pointer-events-none z-10">
             <span className="text-white text-xl">Loading Sky Map...</span>
         </div>
+    )
+}
+
+function RealStars({ observerLat, observerLon }) {
+    // We calculate star positions based on Local Sidereal Time (LST)
+    // LST = GMST + Longitude
+    // RA/Dec to Az/El conversion needs:
+    // HA (Hour Angle) = LST - RA
+    // Then use spherical trig to get Az/El.
+
+    const [starPositions, setStarPositions] = useState([]);
+
+    useFrame(() => {
+        const now = new Date();
+        const gmst = gstime(now); // radians
+        // gmst is in radians? satellite.js gstime returns radians.
+        // wait, let's verify gstime unit. It usually returns radians.
+        // observerLon is degrees. Convert to radians.
+
+        const latRad = observerLat * (Math.PI / 180);
+        const lonRad = observerLon * (Math.PI / 180);
+        const lst = gmst + lonRad; // Local Sidereal Time in radians
+
+        const positions = starCatalog.map(star => {
+            // star.ra is in degrees. Convert to radians.
+            const raRad = star.ra * (Math.PI / 180);
+            const decRad = star.dec * (Math.PI / 180);
+
+            const ha = lst - raRad; // Hour Angle
+
+            // sin(El) = sin(Dec)sin(Lat) + cos(Dec)cos(Lat)cos(HA)
+            const sinEl = Math.sin(decRad) * Math.sin(latRad) + Math.cos(decRad) * Math.cos(latRad) * Math.cos(ha);
+            const el = Math.asin(sinEl);
+
+            // cos(Az) = (sin(Dec) - sin(El)sin(Lat)) / (cos(El)cos(Lat))
+            // Azimuth calculation is tricky due to quadrants.
+            // Using atan2 is better.
+            // sin(Az) = - sin(HA) * cos(Dec) / cos(El)
+            // cos(Az) = (sin(Dec) - sin(El)*sin(Lat)) / (cos(El)*cos(Lat))
+
+            // Formula for Az measured from North (0) Eastwards:
+            // tan(Az) = sin(HA) / (cos(HA)sin(Lat) - tan(Dec)cos(Lat))
+            // This usually gives Az from South? No, depends on convention.
+            // Let's use the standard transformation:
+            // x = -sin(HA)cos(Dec)
+            // y = sin(Dec)cos(Lat) - cos(HA)cos(Dec)sin(Lat)
+            // Az = atan2(x, y)
+            // This Az is usually from South, Westward?
+            // Standard Astronomy: Az 0 is North.
+            // If we use the formula:
+            // Az = atan2( sin(HA), cos(HA)sin(lat) - tan(dec)cos(lat) )
+            // Check sign.
+
+            const y = Math.sin(ha);
+            const x = Math.cos(ha) * Math.sin(latRad) - Math.tan(decRad) * Math.cos(latRad);
+            let az = Math.atan2(y, x) + Math.PI; // Add PI to shift 0 to North?
+            // Usually this formula gives Az from South. Adding PI makes it from North.
+            // Let's verify experimentally or assume standard 0=North convention required.
+
+            // Re-normalizing to 0-2PI
+            az = (az + 2 * Math.PI) % (2 * Math.PI);
+
+            // Filter below horizon?
+            // "Real stars" should probably be visible even if below horizon in "Globe View", but in AR view, ground blocks them.
+            // But we render them far away.
+            // If we render below horizon, and we have a ground, it's fine.
+
+            const distance = 400; // Stars are background
+            // Use polarToCartesian (expects 0=North)
+            const pos = polarToCartesian(az, el, distance);
+
+            return {
+                ...star,
+                position: pos,
+                visible: el > -0.1 // show slightly below horizon to avoid popping
+            };
+        });
+        setStarPositions(positions);
+    });
+
+    return (
+        <group>
+            {starPositions.map((star, idx) => (
+                star.visible && (
+                <group key={idx} position={star.position}>
+                    <mesh>
+                        <sphereGeometry args={[Math.max(0.2, 1.5 + star.mag * -0.5), 8, 8]} />
+                        <meshBasicMaterial color="white" />
+                    </mesh>
+                     {/* Only label very bright stars or if zoomed in? keeping simple for now */}
+                </group>
+                )
+            ))}
+        </group>
     )
 }
 
@@ -87,14 +183,6 @@ function Planes({ observerLat, observerLon }) {
         const now = Date.now() / 1000; // current time in seconds
 
         const positions = planes.map(plane => {
-            // Index 3: time_position (unix timestamp in seconds)
-            // Index 9: velocity (m/s)
-            // Index 10: true_track (decimal degrees)
-            // Index 11: vertical_rate (m/s)
-            // Index 5: longitude
-            // Index 6: latitude
-            // Index 7: baro_altitude (meters)
-
             const timePos = plane[3];
             const velocity = plane[9] || 0;
             const heading = plane[10] || 0;
@@ -105,12 +193,8 @@ function Planes({ observerLat, observerLon }) {
 
             if (lat === null || lon === null) return null;
 
-            // Calculate elapsed time since the data was recorded
-            // If timePos is missing, we can't interpolate, so use 0.
-            // We clamp elapsedSeconds to be >= 0 to handle potential clock skew where local time might be slightly behind server time.
             const elapsedSeconds = timePos ? Math.max(0, now - timePos) : 0;
 
-            // Extrapolate position
             const R = 6371000; // Earth radius in meters
             const distMoved = velocity * elapsedSeconds; // meters
             const headingRad = heading * Math.PI / 180;
@@ -123,7 +207,6 @@ function Planes({ observerLat, observerLon }) {
             const newLon = lon + (dLon * 180 / Math.PI);
             const newAlt = alt + (verticalRate * elapsedSeconds);
 
-            // Construct a virtual plane state with updated coordinates
             const virtualPlane = [...plane];
             virtualPlane[5] = newLon;
             virtualPlane[6] = newLat;
@@ -152,7 +235,6 @@ function Planes({ observerLat, observerLon }) {
             {planePositions.map((plane, idx) => (
                 <group key={idx} position={plane.position} rotation={[0, -plane.heading * (Math.PI / 180), 0]}>
                     <mesh rotation={[-Math.PI / 2, 0, 0]}>
-                        {/* Plane represented as a cone pointing forward */}
                         <coneGeometry args={[0.2, 0.6, 8]} />
                         <meshBasicMaterial color="#00ffff" />
                     </mesh>
@@ -165,31 +247,58 @@ function Planes({ observerLat, observerLon }) {
     )
 }
 
-function Scene() {
-    // Observer location (Mocked: NYC)
-    const observerLat = 40.7128;
-    const observerLon = -74.0060;
+function Globe() {
+    // A simple representation of the Earth below the observer
+    // Observer is at (0,0,0). Earth radius is huge.
+    // We scale it down visually but keep relative geometry roughly correct for horizon.
+    // If we want a "draggable globe", that implies we are looking at the globe from outside.
+    // But the user said "centers on you... but is draggable".
+    // This supports the "Map View" hypothesis where we look at the Earth.
 
+    // However, keeping consistent with AR view (Observer at center):
+    // The "Globe" is the ground.
+    // Let's create a large sphere below the origin.
+    // Radius R = 6371km.
+    // We are at height H.
+    // Scale: 1 unit = ?
+    // If we use scale 1 unit = 1km.
+    // R = 6371.
+    // Position = [0, -6371, 0].
+    // This effectively creates a flat horizon at the origin.
+
+    return (
+         <Sphere args={[6371, 64, 64]} position={[0, -6371, 0]}>
+            <meshStandardMaterial color="#1a2b3c" wireframe={true} transparent opacity={0.3} />
+         </Sphere>
+    )
+}
+
+function Scene({ observerLat, observerLon, isARMode }) {
     return (
         <>
             <ambientLight intensity={0.5} />
-            <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={0} />
+            <RealStars observerLat={observerLat} observerLon={observerLon} />
 
             <Satellites observerLat={observerLat} observerLon={observerLon} />
             <Planes observerLat={observerLat} observerLon={observerLon} />
 
-            <OrbitControls enableZoom={true} enablePan={true} enableRotate={true} />
+            {isARMode ? (
+                 <DeviceOrientationControls />
+            ) : (
+                <OrbitControls enableZoom={true} enablePan={true} enableRotate={true} />
+            )}
 
             {/* Compass / Ground Reference */}
-            <gridHelper args={[100, 20, 0x444444, 0x222222]} position={[0, -10, 0]} />
+            <gridHelper args={[100, 20, 0x444444, 0x222222]} position={[0, -2, 0]} />
+            <Globe />
 
             {/* North Marker */}
-             <mesh position={[0, -10, -50]}>
+             <mesh position={[0, -2, -50]}>
                 <boxGeometry args={[1, 5, 1]} />
                 <meshBasicMaterial color="red" />
             </mesh>
             <Text
-                position={[0, -2, -50]}
+                position={[0, 4, -50]}
                 fontSize={5}
                 color="red"
                 anchorX="center"
@@ -201,18 +310,72 @@ function Scene() {
     )
 }
 
+function CameraFeed() {
+    const videoRef = useRef(null)
+
+    useEffect(() => {
+        async function getCamera() {
+             try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+                if (videoRef.current) {
+                    videoRef.current.srcObject = stream
+                }
+            } catch (e) {
+                console.error("Camera access denied", e)
+            }
+        }
+        getCamera()
+    }, [])
+
+    return (
+        <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            className="absolute top-0 left-0 w-full h-full object-cover z-0"
+        />
+    )
+}
+
 export default function UAPTracker() {
+    const [userLocation, setUserLocation] = useState({ lat: 40.7128, lon: -74.0060 }); // Default NYC
+    const [isARMode, setIsARMode] = useState(false);
+    const [hasLocation, setHasLocation] = useState(false);
+
+    useEffect(() => {
+        if (navigator.geolocation) {
+            const id = navigator.geolocation.watchPosition(
+                (position) => {
+                    setUserLocation({
+                        lat: position.coords.latitude,
+                        lon: position.coords.longitude
+                    });
+                    setHasLocation(true);
+                },
+                (error) => console.error("Geolocation error:", error),
+                { enableHighAccuracy: true }
+            );
+            return () => navigator.geolocation.clearWatch(id);
+        }
+    }, []);
+
     return (
         <div className="w-full h-screen bg-black relative">
+            {isARMode && <CameraFeed />}
+
             <Suspense fallback={<Loading />}>
-                <Canvas camera={{ position: [0, 0, 0.1], fov: 75 }}>
-                    <Scene />
+                <Canvas camera={{ position: [0, 0, 0.1], fov: 75 }} style={{ zIndex: 1, background: 'transparent' }}>
+                    <Scene observerLat={userLocation.lat} observerLon={userLocation.lon} isARMode={isARMode} />
                 </Canvas>
             </Suspense>
 
             {/* UI Overlay */}
             <div className="absolute top-4 left-4 z-10 pointer-events-none select-none">
-                <h1 className="text-2xl font-bold text-white shadow-md">UAP Tracker AR</h1>
+                <h1 className="text-2xl font-bold text-white shadow-md">UAP Tracker</h1>
+                <div className="text-xs text-gray-400">
+                    {hasLocation ? `Lat: ${userLocation.lat.toFixed(4)}, Lon: ${userLocation.lon.toFixed(4)}` : "Locating..."}
+                </div>
                 <div className="flex gap-4 mt-2">
                     <div className="flex items-center gap-2">
                         <div className="w-3 h-3 rounded-full bg-green-500"></div>
@@ -222,14 +385,24 @@ export default function UAPTracker() {
                         <div className="w-3 h-3 bg-cyan-500"></div>
                         <span className="text-gray-300 text-sm">Planes</span>
                     </div>
+                     <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full bg-white"></div>
+                        <span className="text-gray-300 text-sm">Stars</span>
+                    </div>
                 </div>
             </div>
 
-            <div className="absolute bottom-4 left-4 z-10">
-                <button className="bg-purple-600 px-4 py-2 rounded text-white mr-2 shadow-lg hover:bg-purple-700">
+            <div className="absolute bottom-4 left-4 z-10 flex gap-2">
+                 <button
+                    onClick={() => setIsARMode(!isARMode)}
+                    className="bg-blue-600 px-4 py-2 rounded text-white shadow-lg hover:bg-blue-700 pointer-events-auto"
+                >
+                    {isARMode ? "Manual Mode" : "AR Mode"}
+                </button>
+                <button className="bg-purple-600 px-4 py-2 rounded text-white shadow-lg hover:bg-purple-700 pointer-events-auto">
                     Tag Object
                 </button>
-                <LinkButton to="/" className="bg-gray-700 px-4 py-2 rounded text-white shadow-lg hover:bg-gray-600">
+                <LinkButton to="/" className="bg-gray-700 px-4 py-2 rounded text-white shadow-lg hover:bg-gray-600 pointer-events-auto">
                     Back
                 </LinkButton>
             </div>
@@ -238,7 +411,6 @@ export default function UAPTracker() {
 }
 
 // Helper for Link since we are outside Router context in Canvas, but inside in main component
-// Actually we are inside Router in App.jsx, so we can use useNavigate
 import { useNavigate } from 'react-router-dom';
 
 function LinkButton({ to, className, children }) {
