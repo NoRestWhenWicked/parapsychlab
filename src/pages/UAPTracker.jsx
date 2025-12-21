@@ -86,11 +86,51 @@ function Planes({ observerLat, observerLon }) {
     useFrame(() => {
         if (planes.length === 0) return;
 
-        // We assume planes move linearly between updates or just jump.
-        // For smooth animation, we'd need to interpolate. For now, static snapshot per update.
+        const now = Date.now() / 1000; // current time in seconds
 
         const positions = planes.map(plane => {
-            const relativePos = getPlanePositionRelative(plane, observerLat, observerLon, 0);
+            // Index 3: time_position (unix timestamp in seconds)
+            // Index 9: velocity (m/s)
+            // Index 10: true_track (decimal degrees)
+            // Index 11: vertical_rate (m/s)
+            // Index 5: longitude
+            // Index 6: latitude
+            // Index 7: baro_altitude (meters)
+
+            const timePos = plane[3];
+            const velocity = plane[9] || 0;
+            const heading = plane[10] || 0;
+            const lat = plane[6];
+            const lon = plane[5];
+            const alt = plane[7] || 0;
+            const verticalRate = plane[11] || 0;
+
+            if (lat === null || lon === null) return null;
+
+            // Calculate elapsed time since the data was recorded
+            // If timePos is missing, we can't interpolate, so use 0.
+            const elapsedSeconds = timePos ? (now - timePos) : 0;
+
+            // Extrapolate position
+            const R = 6371000; // Earth radius in meters
+            const distMoved = velocity * elapsedSeconds; // meters
+            const headingRad = heading * Math.PI / 180;
+            const latRad = lat * Math.PI / 180;
+
+            const dLat = (distMoved * Math.cos(headingRad)) / R;
+            const dLon = (distMoved * Math.sin(headingRad)) / (R * Math.cos(latRad));
+
+            const newLat = lat + (dLat * 180 / Math.PI);
+            const newLon = lon + (dLon * 180 / Math.PI);
+            const newAlt = alt + (verticalRate * elapsedSeconds);
+
+            // Construct a virtual plane state with updated coordinates
+            const virtualPlane = [...plane];
+            virtualPlane[5] = newLon;
+            virtualPlane[6] = newLat;
+            virtualPlane[7] = newAlt;
+
+            const relativePos = getPlanePositionRelative(virtualPlane, observerLat, observerLon, 0);
             if (!relativePos) return null;
             if (relativePos.elevation < 0) return null; // Below horizon
 
