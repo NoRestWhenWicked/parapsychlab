@@ -84,12 +84,28 @@ export const getPlanePositionRelative = (planeState, observerLat, observerLon, o
 
     // Elevation
     // Height difference
-    const altDiff = pAlt - observerAlt; // meters
-    // Simple flat triangle approximation for elevation is okay for short ranges and visual only
+    // const altDiff = pAlt - observerAlt; // meters
+
     // Correct way: Earth curvature taking into account.
-    // For AR app, visible planes are close enough.
-    const el = Math.atan2(altDiff - (surfaceDist*surfaceDist)/(2*R), surfaceDist);
-    // (Approximation subtracting drop due to curvature)
+    const r_o = R + observerAlt;
+    const r_t = R + pAlt;
+
+    // Central angle in radians
+    const theta = surfaceDist / R;
+
+    // Slant range
+    const s = Math.sqrt(r_o*r_o + r_t*r_t - 2*r_o*r_t*Math.cos(theta));
+
+    let el;
+    if (s === 0) {
+        el = 0; // Observer and target are coincident
+    } else {
+        // sin(El) = (r_t * cos(theta) - r_o) / s
+        // Derived from Law of Cosines on the Earth-Center/Observer/Target triangle
+        const sinEl = (r_t * Math.cos(theta) - r_o) / s;
+        // Clamp to valid range to avoid NaN from floating point errors
+        el = Math.asin(Math.max(-1, Math.min(1, sinEl)));
+    }
 
     return {
         azimuth: az,
